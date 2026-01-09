@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Construction Cost Calculator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const ConstructionCostCalculator = () => {
+            const SQUARE_FOOTAGE = 3917;
+            
+            const baseBidItems = [
+                { name: "GENERAL REQUIREMENTS", amount: 27292, oldAmount: 28240 },
+                { name: "DEMOLITION", amount: 7414, oldAmount: 7762 },
+                { name: "CONCRETE", amount: 6272, oldAmount: 6440 },
+                { name: "MASONRY", amount: 0, oldAmount: 0 },
+                { name: "METALS", amount: 0, oldAmount: 0 },
+                { name: "DRYWALL", amount: 11581, oldAmount: 15590 },  // 16981 - 5400 = 11581
+                { name: "ACOUSTICS", amount: 21388, oldAmount: 16326 },
+                { name: "CARPENTRY/MILLWORK", amount: 71052, oldAmount: 62299 },
+                { name: "DOORS/HARDWARE", amount: 15549, oldAmount: 13934 },
+                { name: "TOILET ACCESSORIES", amount: 0, oldAmount: 0 },
+                { name: "GLASS/GLAZING", amount: 0, oldAmount: 0 },
+                { name: "CERAMIC TILE", amount: 0, oldAmount: 0 },
+                { name: "PAINTING", amount: 5936, oldAmount: 6670 },
+                { name: "WALLCOVERING", amount: 0, oldAmount: 0 },
+                { name: "FLOORCOVERING", amount: 24233, oldAmount: 31540 },
+                { name: "SPECIALTIES", amount: 12096, oldAmount: 13297 },
+                { name: "EQUIPMENT", amount: 324, oldAmount: 3191 },
+                { name: "WINDOW TREATMENT", amount: 0, oldAmount: 0 },
+                { name: "ROOFING", amount: 0, oldAmount: 0 },
+                { name: "HVAC", amount: 20388, oldAmount: 28290 },
+                { name: "PLUMBING", amount: 60480, oldAmount: 65121 },
+                { name: "SPRINKLER", amount: 0, oldAmount: 0 },
+                { name: "ELECTRICAL", amount: 83882, oldAmount: 56120 },
+                { name: "SUITE SIGNAGE", amount: 250, oldAmount: 250 }
+            ];
+
+            const BASE_BID_TOTAL = 367888;  // 373288 - 5400 = 367888
+            const OLD_BASE_BID_TOTAL = 354820;
+
+            const [showBaseBidDetails, setShowBaseBidDetails] = useState(false);
+            const [showComparison, setShowComparison] = useState(false);
+            const [contingencyPercent, setContingencyPercent] = useState(0); // Set to 0, no contingency
+            const [cmFeePercent] = useState(4);
+            const architecturalFees = 9000; // Hardcoded
+            const [mepDrawings] = useState(4500);
+            
+            // Old values for comparison
+            const oldArchitecturalFees = 10000;
+            const oldMepDrawings = 5860;
+            
+            // Tenant-purchased items (no CM fee or contingency)
+            const [tenantItems, setTenantItems] = useState([
+                { name: "Dishwasher (delivered & installed)", amount: 960 },
+                { name: "", amount: 0 },
+                { name: "", amount: 0 },
+                { name: "", amount: 0 },
+                { name: "", amount: 0 }
+            ]);
+            
+            // Financing inputs - hardcoded values
+            const tiAllowance = 235020;
+            const freeRentValue = 80769;
+            
+            const [alternates, setAlternates] = useState([
+                { 
+                    id: 'insulation', 
+                    name: 'ADD - Blown-in insulation for therapy rooms', 
+                    baseAmount: 5400, 
+                    selected: false,
+                    hasCeilingOption: false
+                },
+                { 
+                    id: 'xray', 
+                    name: 'ADD - Lead shielded walls and glass in X-ray room', 
+                    baseAmount: 4870, 
+                    selected: false,
+                    hasCeilingOption: false
+                },
+                { 
+                    id: 'monument', 
+                    name: 'ADD - Monument Signage', 
+                    baseAmount: 450, 
+                    selected: true,
+                    hasCeilingOption: false
+                }
+            ]);
+            
+            // Old alternates for comparison (now included in base bid)
+            const oldAlternatesIncludedInBase = [
+                { name: 'A2 - Replace 15 Flat Panel LED\'s with 22 downlights', amount: 3800 },
+                { name: 'ADD - 2x Glass inserts in entry way doors', amount: 2600 }
+            ];
+
+            const toggleAlternate = (id) => {
+                setAlternates(alternates.map(alt => 
+                    alt.id === id ? { ...alt, selected: !alt.selected } : alt
+                ));
+            };
+
+            const toggleCeiling = (id) => {
+                setAlternates(alternates.map(alt => 
+                    alt.id === id ? { ...alt, ceilingSelected: !alt.ceilingSelected } : alt
+                ));
+            };
+
+            const updateTenantItem = (index, field, value) => {
+                const newItems = [...tenantItems];
+                newItems[index][field] = value;
+                setTenantItems(newItems);
+            };
+
+            const calculateWithCMFee = (baseAmount) => {
+                const cmFee = baseAmount * (cmFeePercent / 100);
+                return baseAmount + cmFee;
+            };
+
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                }).format(amount);
+            };
+
+            const formatPerSF = (amount) => {
+                return `$${(amount / SQUARE_FOOTAGE).toFixed(2)}/SF`;
+            };
+
+            // Calculate Base Bid totals
+            const baseBidWithCM = calculateWithCMFee(BASE_BID_TOTAL);
+            const baseBidContingency = baseBidWithCM * (contingencyPercent / 100);
+            const baseBidTotal = baseBidWithCM + baseBidContingency;
+            
+            // Calculate old base bid totals (Version 1) - no contingency for comparison
+            const oldBaseBidWithCM = OLD_BASE_BID_TOTAL * 1.04;
+            const oldBaseBidTotal = oldBaseBidWithCM;
+            
+            // Calculate Soft Costs
+            const totalSoftCosts = architecturalFees + mepDrawings;
+            const oldTotalSoftCosts = oldArchitecturalFees + oldMepDrawings;
+            
+            // Calculate old alternates that were selected (A2 + Monument)
+            const oldA2WithCM = 3800 * 1.04;
+            const oldMonumentWithCM = 450 * 1.04;
+            const oldSelectedAlternatesTotal = oldA2WithCM + oldMonumentWithCM;
+            
+            // Calculate Tenant-Purchased Items (no fees)
+            const tenantItemsTotal = tenantItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+            
+            // Calculate Alternates totals
+            const selectedAlternatesBaseTotal = alternates.reduce((sum, alt) => {
+                if (!alt.selected) return sum;
+                
+                let altTotal = alt.baseAmount;
+                if (alt.hasCeilingOption && alt.ceilingSelected) {
+                    altTotal += alt.ceilingCost;
+                }
+                
+                return sum + altTotal;
+            }, 0);
+            
+            const selectedAlternatesWithCM = calculateWithCMFee(selectedAlternatesBaseTotal);
+            const alternatesContingency = selectedAlternatesWithCM * (contingencyPercent / 100);
+            const selectedAlternatesTotal = selectedAlternatesWithCM + alternatesContingency;
+
+            const grandTotal = baseBidTotal + totalSoftCosts + tenantItemsTotal + selectedAlternatesTotal;
+            
+            // Version 1 Grand Total (for comparison)
+            const version1GrandTotal = oldBaseBidTotal + oldTotalSoftCosts + oldSelectedAlternatesTotal + tenantItemsTotal;
+
+            // Financing calculations
+            const tiApplied = Math.min(tiAllowance, grandTotal);
+            const remainingAfterTI = Math.max(0, grandTotal - tiApplied);
+            const freeRentApplied = Math.min(freeRentValue, remainingAfterTI);
+            const loanAmount = Math.max(0, remainingAfterTI - freeRentApplied);
+
+            return (
+                <div className="max-w-6xl mx-auto p-6">
+                    <div className="bg-white rounded-lg shadow-lg p-8">
+                        <h1 className="text-3xl font-bold mb-2 text-gray-800">Construction Cost Calculator</h1>
+                        <p className="text-gray-600 mb-8">Project Size: {SQUARE_FOOTAGE.toLocaleString()} SF</p>
+
+                        {/* Controls */}
+                        <div className="bg-blue-50 rounded-lg p-6 mb-8">
+                            <h2 className="text-xl font-semibold mb-4 text-gray-800">Project Parameters</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Construction Management Fee: {cmFeePercent}%
+                                    </label>
+                                    <div className="text-2xl font-semibold text-gray-600">{cmFeePercent}%</div>
+                                    <p className="text-xs text-gray-500 mt-1">Applied to hard costs only</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Contingency
+                                    </label>
+                                    <div className="text-2xl font-semibold text-gray-600">0%</div>
+                                    <p className="text-xs text-gray-500 mt-1">No contingency applied in Version 2</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Base Bid Section */}
+                        <div className="mb-8">
+                            <div className="bg-gray-100 rounded-t-lg p-4">
+                                <button
+                                    onClick={() => setShowBaseBidDetails(!showBaseBidDetails)}
+                                    className="w-full flex items-center justify-between text-left"
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <span className={`transform transition-transform ${showBaseBidDetails ? 'rotate-90' : ''}`}>
+                                            ▶
+                                        </span>
+                                        <h2 className="text-xl font-bold text-gray-800">BASE BID - Hard Costs</h2>
+                                    </div>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-xl font-bold text-gray-800">{formatCurrency(baseBidTotal)}</span>
+                                        <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(baseBidTotal)}</span>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {showBaseBidDetails && (
+                                <div className="bg-white border border-gray-200 rounded-b-lg">
+                                    <div className="p-4 space-y-2">
+                                        {/* Header row */}
+                                        <div className="flex justify-between items-center py-2 border-b-2 border-gray-300 font-semibold text-sm text-gray-600">
+                                            <span className="flex-1">Line Item</span>
+                                            <span className="w-32 text-right">GC Bid</span>
+                                            <span className="w-32 text-right">w/ CM Fee</span>
+                                            <span className="w-24 text-right">$/SF</span>
+                                        </div>
+                                        
+                                        {baseBidItems.map((item, index) => {
+                                            const itemWithCM = calculateWithCMFee(item.amount);
+                                            return (
+                                                <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                                                    <span className="text-gray-700 flex-1">{item.name}</span>
+                                                    <span className="text-gray-600 w-32 text-right">{formatCurrency(item.amount)}</span>
+                                                    <span className="text-gray-800 font-medium w-32 text-right">{formatCurrency(itemWithCM)}</span>
+                                                    <span className="text-gray-600 w-24 text-right">{formatPerSF(itemWithCM)}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        
+                                        <div className="pt-4 mt-4 border-t-2 border-gray-300">
+                                            <div className="flex justify-between items-center py-1 text-sm">
+                                                <span className="text-gray-700 font-medium">Base Bid Subtotal</span>
+                                                <span className="text-gray-600 w-32 text-right">{formatCurrency(BASE_BID_TOTAL)}</span>
+                                                <span className="text-gray-800 font-semibold w-32 text-right">{formatCurrency(baseBidWithCM)}</span>
+                                                <span className="text-gray-600 w-24 text-right">{formatPerSF(baseBidWithCM)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-1 text-sm mt-2">
+                                                <span className="text-gray-700 font-medium">Contingency ({contingencyPercent}%)</span>
+                                                <span className="w-32"></span>
+                                                <span className="text-gray-800 font-semibold w-32 text-right">{formatCurrency(baseBidContingency)}</span>
+                                                <span className="text-gray-600 w-24 text-right">{formatPerSF(baseBidContingency)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Soft Costs Section */}
+                        <div className="mb-8 bg-gray-50 rounded-lg p-6">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4">SOFT COSTS</h2>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex-1">
+                                        <span className="block text-sm font-medium text-gray-700">
+                                            Architectural Fees
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-xl font-bold text-gray-800">{formatCurrency(architecturalFees)}</span>
+                                        <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(architecturalFees)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                                    <div className="flex-1">
+                                        <span className="block text-sm font-medium text-gray-700">
+                                            MEP Drawings for Permit
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-xl font-bold text-gray-800">{formatCurrency(mepDrawings)}</span>
+                                        <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(mepDrawings)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center pt-3 border-t-2 border-gray-300">
+                                    <span className="text-lg font-semibold text-gray-800">Total Soft Costs</span>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-xl font-bold text-gray-800">{formatCurrency(totalSoftCosts)}</span>
+                                        <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(totalSoftCosts)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-4">No contingency or CM fee applied to soft costs</p>
+                        </div>
+
+                        {/* Alternates Section */}
+                        <div className="mb-8">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4 bg-gray-100 p-4 rounded-t-lg">ALTERNATES</h2>
+                            <div className="bg-white border border-gray-200 rounded-b-lg p-4 space-y-4">
+                                {/* Header row */}
+                                <div className="flex justify-between items-center pb-2 border-b-2 border-gray-300 font-semibold text-sm text-gray-600">
+                                    <span className="flex-1">Alternate Item</span>
+                                    <span className="w-28 text-right">Base Cost</span>
+                                    <span className="w-28 text-right">w/ CM Fee</span>
+                                    <span className="w-24 text-right">$/SF</span>
+                                </div>
+                                
+                                {alternates.map((alt) => {
+                                    let altAmount = alt.baseAmount;
+                                    if (alt.hasCeilingOption && alt.ceilingSelected) {
+                                        altAmount += alt.ceilingCost;
+                                    }
+                                    
+                                    const altWithCM = calculateWithCMFee(altAmount);
+                                    
+                                    return (
+                                        <div key={alt.id} className="border border-gray-200 rounded-lg p-4">
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div className="flex items-start space-x-3 flex-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={alt.selected}
+                                                        onChange={() => toggleAlternate(alt.id)}
+                                                        className="mt-1 h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <span className="text-gray-800 font-medium">{alt.name}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center space-x-4">
+                                                    <span className={`text-sm w-28 text-right ${alt.selected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                        {formatCurrency(altAmount)}
+                                                    </span>
+                                                    <span className={`text-lg font-semibold w-28 text-right ${alt.selected ? 'text-blue-600' : 'text-gray-400'}`}>
+                                                        {formatCurrency(altWithCM)}
+                                                    </span>
+                                                    <span className={`text-md w-24 text-right ${alt.selected ? 'text-blue-600' : 'text-gray-400'}`}>
+                                                        {formatPerSF(altWithCM)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            {alt.hasCeilingOption && (
+                                                <div className="ml-8 mt-3 pl-4 border-l-2 border-gray-200">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={alt.ceilingSelected}
+                                                                onChange={() => toggleCeiling(alt.id)}
+                                                                disabled={!alt.selected}
+                                                                className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                                                            />
+                                                            <span className={`text-sm ${alt.selected ? 'text-gray-700' : 'text-gray-400'}`}>
+                                                                Add drywall finished ceiling
+                                                            </span>
+                                                        </div>
+                                                        <span className={`text-sm ${alt.selected && alt.ceilingSelected ? 'text-blue-600' : 'text-gray-400'}`}>
+                                                            +{formatCurrency(calculateWithCMFee(alt.ceilingCost))}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                
+                                {selectedAlternatesBaseTotal > 0 && (
+                                    <div className="pt-4 mt-4 border-t-2 border-gray-300">
+                                        <div className="flex justify-between items-center py-1 text-sm">
+                                            <span className="text-gray-700 font-medium">Selected Alternates Subtotal</span>
+                                            <span className="text-gray-600 w-28 text-right">{formatCurrency(selectedAlternatesBaseTotal)}</span>
+                                            <span className="text-gray-800 font-semibold w-28 text-right">{formatCurrency(selectedAlternatesWithCM)}</span>
+                                            <span className="text-gray-600 w-24 text-right">{formatPerSF(selectedAlternatesWithCM)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-1 text-sm mt-2">
+                                            <span className="text-gray-700 font-medium">Contingency ({contingencyPercent}%)</span>
+                                            <span className="w-28"></span>
+                                            <span className="text-gray-800 font-semibold w-28 text-right">{formatCurrency(alternatesContingency)}</span>
+                                            <span className="text-gray-600 w-24 text-right">{formatPerSF(alternatesContingency)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 mt-2 border-t border-gray-200 pt-2">
+                                            <span className="text-lg font-semibold text-gray-800">Total Selected Alternates</span>
+                                            <span className="w-28"></span>
+                                            <span className="text-lg font-bold text-blue-600 w-28 text-right">{formatCurrency(selectedAlternatesTotal)}</span>
+                                            <span className="text-md text-blue-600 w-24 text-right">{formatPerSF(selectedAlternatesTotal)}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Tenant-Purchased Items Section */}
+                        <div className="mb-8 bg-purple-50 rounded-lg p-6">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4">TENANT-PURCHASED ITEMS</h2>
+                            <p className="text-sm text-gray-600 mb-4">Items purchased directly by tenant - no CM fee or contingency applied</p>
+                            <div className="space-y-3">
+                                {tenantItems.map((item, index) => (
+                                    <div key={index} className="flex justify-between items-center bg-white rounded-lg p-3">
+                                        <div className="flex-1 mr-4 flex items-center space-x-3">
+                                            <input
+                                                type="text"
+                                                value={item.name}
+                                                onChange={(e) => updateTenantItem(index, 'name', e.target.value)}
+                                                placeholder="Item description"
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                                            />
+                                            {index === 0 && item.name.toLowerCase().includes('dishwasher') && (
+                                                <a
+                                                    href="https://www.homedepot.com/p/GE-24-in-Built-In-Stainless-Steel-Top-Control-ADA-Dishwasher-with-Stainless-Steel-Tub-and-51-dBA-GDT225SSLSS/305891073"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+                                                >
+                                                    View Product
+                                                </a>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center space-x-6">
+                                            <input
+                                                type="number"
+                                                value={item.amount || ''}
+                                                onChange={(e) => updateTenantItem(index, 'amount', parseFloat(e.target.value) || 0)}
+                                                placeholder="Amount"
+                                                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm text-right"
+                                            />
+                                            <span className="text-lg font-semibold text-gray-800 w-28 text-right">
+                                                {formatCurrency(item.amount || 0)}
+                                            </span>
+                                            <span className="text-gray-600 w-24 text-right">
+                                                {formatPerSF(item.amount || 0)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="flex justify-between items-center pt-3 border-t-2 border-gray-300 mt-4">
+                                    <span className="text-lg font-semibold text-gray-800">Total Tenant-Purchased Items</span>
+                                    <div className="flex items-center space-x-6">
+                                        <span className="w-32"></span>
+                                        <span className="text-xl font-bold text-purple-700 w-28 text-right">{formatCurrency(tenantItemsTotal)}</span>
+                                        <span className="text-lg text-purple-700 w-24 text-right">{formatPerSF(tenantItemsTotal)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Project Summary */}
+                        <div className="mb-8 bg-blue-50 rounded-lg p-6 border-2 border-blue-300">
+                            <h2 className="text-xl font-bold text-gray-800 mb-6">PROJECT COST SUMMARY</h2>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center py-2 bg-white rounded px-4">
+                                    <span className="text-gray-700 font-medium">Base Bid (Hard Costs)</span>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-lg font-semibold text-gray-800">{formatCurrency(baseBidTotal)}</span>
+                                        <span className="text-gray-600 w-24 text-right">{formatPerSF(baseBidTotal)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center py-2 bg-white rounded px-4">
+                                    <span className="text-gray-700 font-medium">Soft Costs</span>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-lg font-semibold text-gray-800">{formatCurrency(totalSoftCosts)}</span>
+                                        <span className="text-gray-600 w-24 text-right">{formatPerSF(totalSoftCosts)}</span>
+                                    </div>
+                                </div>
+                                {selectedAlternatesTotal > 0 && (
+                                    <div className="flex justify-between items-center py-2 bg-white rounded px-4">
+                                        <span className="text-gray-700 font-medium">Alternates</span>
+                                        <div className="flex items-center space-x-8">
+                                            <span className="text-lg font-semibold text-gray-800">{formatCurrency(selectedAlternatesTotal)}</span>
+                                            <span className="text-gray-600 w-24 text-right">{formatPerSF(selectedAlternatesTotal)}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {tenantItemsTotal > 0 && (
+                                    <div className="flex justify-between items-center py-2 bg-white rounded px-4">
+                                        <span className="text-gray-700 font-medium">Tenant-Purchased Items</span>
+                                        <div className="flex items-center space-x-8">
+                                            <span className="text-lg font-semibold text-gray-800">{formatCurrency(tenantItemsTotal)}</span>
+                                            <span className="text-gray-600 w-24 text-right">{formatPerSF(tenantItemsTotal)}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center py-3 bg-blue-600 text-white rounded px-4 mt-4">
+                                    <span className="text-xl font-bold">TOTAL PROJECT COST</span>
+                                    <div className="flex items-center space-x-8">
+                                        <span className="text-2xl font-bold">{formatCurrency(grandTotal)}</span>
+                                        <span className="text-lg w-24 text-right">{formatPerSF(grandTotal)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Financing Section */}
+                        <div className="mb-8 bg-green-50 rounded-lg p-6 border-2 border-green-200">
+                            <h2 className="text-xl font-bold text-gray-800 mb-6">FINANCING STRUCTURE</h2>
+                            
+                            <div className="space-y-4">
+                                {/* TI Allowance */}
+                                <div className="bg-white rounded-lg p-4 border border-green-200">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                Tenant Improvement (TI) Allowance
+                                            </label>
+                                            <p className="text-gray-600">Landlord-provided allowance</p>
+                                        </div>
+                                        <div className="flex items-center space-x-8">
+                                            <span className="text-xl font-bold text-green-700">{formatCurrency(tiApplied)}</span>
+                                            <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(tiApplied)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Free Rent Value */}
+                                <div className="bg-white rounded-lg p-4 border border-green-200">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                Free Rent Value
+                                            </label>
+                                            <p className="text-gray-600">Free rent converted to capital</p>
+                                        </div>
+                                        <div className="flex items-center space-x-8">
+                                            <span className="text-xl font-bold text-green-700">{formatCurrency(freeRentApplied)}</span>
+                                            <span className="text-lg text-gray-600 w-24 text-right">{formatPerSF(freeRentApplied)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Loan Amount */}
+                                <div className="bg-amber-50 rounded-lg p-4 border-2 border-amber-300">
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">
+                                                Loan Required
+                                            </label>
+                                            <p className="text-xs text-gray-500">Remaining balance after TI and free rent</p>
+                                        </div>
+                                        <div className="flex items-center space-x-8">
+                                            <span className="text-2xl font-bold text-amber-700">{formatCurrency(loanAmount)}</span>
+                                            <span className="text-lg text-amber-600 w-24 text-right">{formatPerSF(loanAmount)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Financing Summary */}
+                            <div className="mt-6 bg-white rounded-lg p-4 border border-gray-300">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-3">Financing Breakdown</h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between py-1">
+                                        <span className="text-gray-600">Total Project Cost</span>
+                                        <span className="text-gray-800 font-semibold">{formatCurrency(grandTotal)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-t border-gray-200 pt-2">
+                                        <span className="text-green-700">Less: TI Allowance</span>
+                                        <span className="text-green-700 font-medium">({formatCurrency(tiApplied)})</span>
+                                    </div>
+                                    <div className="flex justify-between py-1">
+                                        <span className="text-gray-600">Balance After TI</span>
+                                        <span className="text-gray-800 font-medium">{formatCurrency(remainingAfterTI)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-t border-gray-200 pt-2">
+                                        <span className="text-green-700">Less: Free Rent Value</span>
+                                        <span className="text-green-700 font-medium">({formatCurrency(freeRentApplied)})</span>
+                                    </div>
+                                    <div className="flex justify-between py-2 border-t-2 border-gray-300 pt-3">
+                                        <span className="text-gray-800 font-semibold">Tenant Loan Amount</span>
+                                        <span className="text-amber-700 font-bold text-lg">{formatCurrency(loanAmount)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Collapsible Version Comparison Section */}
+                        <div className="mb-8">
+                            <div className="bg-gray-100 rounded-t-lg p-4">
+                                <button
+                                    onClick={() => setShowComparison(!showComparison)}
+                                    className="w-full flex items-center justify-between text-left"
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <span className={`transform transition-transform ${showComparison ? 'rotate-90' : ''}`}>
+                                            ▶
+                                        </span>
+                                        <h2 className="text-xl font-bold text-gray-800">BID COMPARISON: VERSION 1 vs VERSION 2</h2>
+                                    </div>
+                                    <span className="text-sm text-gray-600">Click to {showComparison ? 'hide' : 'view'} detailed comparison</span>
+                                </button>
+                            </div>
+
+                            {showComparison && (
+                                <div className="bg-yellow-50 rounded-b-lg p-6 border-2 border-t-0 border-yellow-300">
+                                    {/* Base Bid Line Items Comparison */}
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-700 mb-3 bg-gray-100 p-3 rounded">BASE BID LINE ITEMS</h3>
+                                        <div className="bg-white rounded-lg p-4">
+                                            <div className="flex justify-between items-center py-2 border-b-2 border-gray-300 font-semibold text-sm text-gray-600 mb-2">
+                                                <span className="flex-1">Line Item</span>
+                                                <span className="w-32 text-right">Version 1</span>
+                                                <span className="w-32 text-right">Version 2</span>
+                                                <span className="w-32 text-right">Difference</span>
+                                            </div>
+                                            {baseBidItems.map((item, index) => {
+                                                const diff = item.amount - item.oldAmount;
+                                                const diffColor = diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-gray-600';
+                                                return (
+                                                    <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
+                                                        <span className="text-gray-700 flex-1 text-sm">{item.name}</span>
+                                                        <span className="text-gray-600 w-32 text-right text-sm">{formatCurrency(item.oldAmount)}</span>
+                                                        <span className="text-gray-800 w-32 text-right text-sm font-medium">{formatCurrency(item.amount)}</span>
+                                                        <span className={`w-32 text-right text-sm font-semibold ${diffColor}`}>
+                                                            {diff !== 0 ? (diff > 0 ? '+' : '') + formatCurrency(diff) : '—'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="flex justify-between items-center py-3 mt-3 border-t-2 border-gray-300 font-semibold">
+                                                <span className="text-gray-800 flex-1">Base Bid Subtotal (with CM Fee)</span>
+                                                <span className="text-gray-800 w-32 text-right">{formatCurrency(oldBaseBidTotal)}</span>
+                                                <span className="text-gray-800 w-32 text-right">{formatCurrency(baseBidTotal)}</span>
+                                                <span className={`w-32 text-right font-bold ${(baseBidTotal - oldBaseBidTotal) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                    {(baseBidTotal - oldBaseBidTotal) > 0 ? '+' : ''}{formatCurrency(baseBidTotal - oldBaseBidTotal)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Soft Costs Comparison */}
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-700 mb-3 bg-gray-100 p-3 rounded">SOFT COSTS</h3>
+                                        <div className="bg-white rounded-lg p-4">
+                                            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                                <span className="text-gray-700 flex-1">Architectural Fees</span>
+                                                <span className="text-gray-600 w-32 text-right">{formatCurrency(oldArchitecturalFees)}</span>
+                                                <span className="text-gray-800 w-32 text-right font-medium">{formatCurrency(architecturalFees)}</span>
+                                                <span className="text-green-600 w-32 text-right font-semibold">{formatCurrency(architecturalFees - oldArchitecturalFees)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                                <span className="text-gray-700 flex-1">MEP Drawings</span>
+                                                <span className="text-gray-600 w-32 text-right">{formatCurrency(oldMepDrawings)}</span>
+                                                <span className="text-gray-800 w-32 text-right font-medium">{formatCurrency(mepDrawings)}</span>
+                                                <span className="text-green-600 w-32 text-right font-semibold">{formatCurrency(mepDrawings - oldMepDrawings)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-3 mt-2 border-t-2 border-gray-300 font-semibold">
+                                                <span className="text-gray-800 flex-1">Soft Costs Total</span>
+                                                <span className="text-gray-800 w-32 text-right">{formatCurrency(oldTotalSoftCosts)}</span>
+                                                <span className="text-gray-800 w-32 text-right">{formatCurrency(totalSoftCosts)}</span>
+                                                <span className="text-green-600 w-32 text-right font-bold">{formatCurrency(totalSoftCosts - oldTotalSoftCosts)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Alternates Comparison */}
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-700 mb-3 bg-gray-100 p-3 rounded">ALTERNATES</h3>
+                                        <div className="bg-white rounded-lg p-4 space-y-3">
+                                            {/* Old alternates now included in base */}
+                                            {oldAlternatesIncludedInBase.map((alt, index) => (
+                                                <div key={index} className="flex justify-between items-center py-2 bg-green-50 rounded px-3">
+                                                    <div className="flex items-center space-x-3 flex-1">
+                                                        <span className="text-green-600 text-xl">✓</span>
+                                                        <span className="text-gray-500 line-through">{alt.name}</span>
+                                                        <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded font-semibold">NOW IN BASE BID</span>
+                                                    </div>
+                                                    <span className="text-gray-500 w-32 text-right line-through">{formatCurrency(alt.amount * 1.04)}</span>
+                                                </div>
+                                            ))}
+                                            
+                                            {/* Monument signage - in both versions */}
+                                            <div className="flex justify-between items-center py-2 border border-blue-200 rounded px-3 bg-blue-50">
+                                                <div className="flex-1">
+                                                    <span className="text-gray-700 font-medium">ADD - Monument Signage</span>
+                                                    <span className="text-xs text-blue-600 ml-2">(In both versions)</span>
+                                                </div>
+                                                <span className="text-blue-600 w-32 text-right font-semibold">{formatCurrency(450 * 1.04)}</span>
+                                            </div>
+                                            
+                                            {/* New alternate - Therapy room insulation */}
+                                            <div className="flex justify-between items-center py-2 border border-purple-200 rounded px-3 bg-purple-50">
+                                                <div className="flex-1">
+                                                    <span className="text-gray-700 font-medium">ADD - Blown-in insulation for therapy rooms</span>
+                                                    <span className="text-xs text-purple-600 ml-2">(New in Version 2 - moved from base bid)</span>
+                                                </div>
+                                                <span className="text-purple-600 w-32 text-right font-semibold">{formatCurrency(5400 * 1.04)}</span>
+                                            </div>
+                                            
+                                            {/* New alternate - X-ray room */}
+                                            <div className="flex justify-between items-center py-2 border border-purple-200 rounded px-3 bg-purple-50">
+                                                <div className="flex-1">
+                                                    <span className="text-gray-700 font-medium">ADD - Lead shielded walls and glass in X-ray room</span>
+                                                    <span className="text-xs text-purple-600 ml-2">(New in Version 2)</span>
+                                                </div>
+                                                <span className="text-purple-600 w-32 text-right font-semibold">{formatCurrency(4870 * 1.04)}</span>
+                                            </div>
+                                            
+                                            <div className="flex justify-between items-center py-3 mt-3 border-t-2 border-gray-300">
+                                                <span className="text-gray-800 flex-1 font-semibold">Selected Alternates Total</span>
+                                                <span className="text-gray-800 w-32 text-right font-semibold">{formatCurrency(oldSelectedAlternatesTotal)}</span>
+                                                <span className="text-gray-800 w-32 text-right font-semibold">{formatCurrency(oldMonumentWithCM)}</span>
+                                                <span className="text-green-600 w-32 text-right font-bold">{formatCurrency(oldMonumentWithCM - oldSelectedAlternatesTotal)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Grand Total Comparison */}
+                                    <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-6 text-white">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-xl font-bold">TOTAL PROJECT COST</span>
+                                            <div className="flex items-center space-x-8">
+                                                <div className="text-center">
+                                                    <div className="text-xs uppercase mb-1">Version 1</div>
+                                                    <div className="text-2xl font-bold">{formatCurrency(version1GrandTotal)}</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-xs uppercase mb-1">Version 2</div>
+                                                    <div className="text-2xl font-bold">{formatCurrency(grandTotal)}</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-xs uppercase mb-1">Difference</div>
+                                                    <div className={`text-2xl font-bold ${(grandTotal - version1GrandTotal) > 0 ? 'text-red-200' : 'text-green-200'}`}>
+                                                        {(grandTotal - version1GrandTotal) > 0 ? '+' : ''}{formatCurrency(grandTotal - version1GrandTotal)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-sm opacity-90">
+                                            Note: Both versions shown without contingency. Version 2 is the active calculator above.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<ConstructionCostCalculator />, document.getElementById('root'));
+    </script>
+</body>
+</html>
